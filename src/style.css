@@ -214,6 +214,17 @@ body {
   color: #fff;
 }
 
+.tool.clock {
+  min-width: 74px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+
+.tool.clock.paused {
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.78);
+}
+
 /* ---------- legend ---------- */
 
 .legend {
