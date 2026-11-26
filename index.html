@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>East Doncaster Secondary College — 3D Campus</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231c3f6e'/%3E%3Ctext x='16' y='22' font-family='sans-serif' font-size='12' font-weight='bold' fill='%23f7c948' text-anchor='middle'%3EE%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+      <div class="vignette"></div>
+
+      <header class="topbar">
+        <div class="brand">
+          <div class="crest">EDSC</div>
+          <div class="brand-text">
+            <h1>East Doncaster<br />Secondary College</h1>
+            <p>3D Campus Map</p>
+          </div>
+        </div>
+        <div class="tools">
+          <button id="btn-labels" class="tool active" type="button">Labels</button>
+          <button id="btn-top" class="tool" type="button">Plan view</button>
+          <button id="btn-reset" class="tool" type="button">Reset</button>
+        </div>
+      </header>
+
+      <aside class="legend" id="legend">
+        <h2>Buildings</h2>
+        <ul id="legend-list"></ul>
+        <p class="legend-hint">Click a swatch to hide that group.</p>
+        <p class="legend-hint">G marks the ground floor of a two-storey block; the rooms paired with it sit directly above.</p>
+      </aside>
+
+      <div class="info-card" id="info" aria-live="polite"></div>
+
+      <div class="tooltip" id="tooltip"></div>
+
+      <div class="hint">WASD or arrows to travel · Q / E to turn · Shift to sprint · Double-click a building to fly to it · Scroll to zoom</div>
+
+      <div class="compass">
+        <span>N</span>
+        <div class="arrow"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
