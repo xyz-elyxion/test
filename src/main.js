@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { OrbitControls } from '../vendor/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from '../vendor/CSS2DRenderer.js';
 import {
   PLAN,
   CATEGORIES,

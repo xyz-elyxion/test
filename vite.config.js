@@ -7,6 +7,8 @@ const allowedHosts = (process.env.PREVIEW_HOSTS ?? '')
   .filter(Boolean);
 
 export default defineConfig({
+  // Relative asset URLs so a build also works under a /repo-name/ Pages path.
+  base: './',
   server: {
     host: '0.0.0.0',
     port: 3000,
