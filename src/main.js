@@ -405,6 +405,23 @@ PATHS.forEach((p) => {
 const pickables = [];
 const categoryCounts = {};
 
+/* -------------------------------- deep links from the Compass userscript */
+
+/** "WA22", "wa 22" and "WA-22" all collapse to the same key. */
+function locationKey(name) {
+  return String(name ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+/** Every room and building a Compass location name could point at. */
+const locationIndex = new Map();
+
+function rememberLocation(name, mesh, planPoint) {
+  const key = locationKey(name);
+  if (!key || locationIndex.has(key)) return;
+  // planPoint stays in plan pixels and is moved into world space at fly time.
+  locationIndex.set(key, { name, mesh, point: planPoint.clone() });
+}
+
 function heightFor(item) {
   const base = item.h ?? ((item.f || 1) * STOREY + 4);
   return base * HEIGHT_SCALE;
@@ -517,6 +534,8 @@ function addBuilding(item) {
   buildingGroup.add(group);
   categoryCounts[item.c] = (categoryCounts[item.c] || 0) + 1;
 
+  rememberLocation(item.n, mesh, new THREE.Vector3(b.cx, h * 0.35, b.cz));
+
   if (item.top) {
     const label = makeLabel(item.n, 'major', 5);
     label.position.set(b.cx, h + 10, b.cz);
@@ -615,6 +634,12 @@ function addDouble(d) {
     label.position.set(rx + rw / 2, room.lv ? h + 8 : 7, rz + rd / 2);
     label.userData.cat = d.c;
     labelGroup.add(label);
+
+    rememberLocation(
+      room.n,
+      mesh,
+      new THREE.Vector3(rx + rw / 2, room.lv ? h * 0.62 : h * 0.22, rz + rd / 2)
+    );
   });
 }
 
@@ -1033,6 +1058,65 @@ btnReset.addEventListener('click', () => {
   flyTo(homeView().pos, homeView().target, 900);
 });
 
+/* -------------------------------------------------- Compass deep links */
+
+const toast = document.getElementById('toast');
+let toastTimer = 0;
+
+function showToast(message) {
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 4200);
+}
+
+/**
+ * Frame one room or building, e.g. when the Compass userscript opens
+ * ?room=WA22. Matching is forgiving: Compass may print "WA 22", "WA022" or
+ * "WA22A" for the room the plan calls WA22.
+ */
+function focusLocation(rawName) {
+  const key = locationKey(rawName);
+  if (!key) return false;
+
+  let hit = locationIndex.get(key);
+  const wanted = /^([A-Z]+)0*(\d+)[A-Z]?$/.exec(key);
+
+  if (!hit && wanted) {
+    for (const entry of locationIndex.values()) {
+      const parts = /^([A-Z]+)0*(\d+)[A-Z]?$/.exec(locationKey(entry.name));
+      if (parts && parts[1] === wanted[1] && Number(parts[2]) === Number(wanted[2])) {
+        hit = entry;
+        break;
+      }
+    }
+  }
+
+  if (!hit) {
+    showToast(`${rawName} is not on the map yet — showing the whole campus`);
+    return false;
+  }
+
+  const target = hit.point.clone().sub(new THREE.Vector3(PLAN_MID.x, 0, PLAN_MID.z));
+  const b = hit.mesh.userData.item?._bounds;
+  const span = b ? Math.max(b.w, b.d) : 120;
+  const distance = THREE.MathUtils.clamp(span * 3.4, 180, 620);
+  flyTo(HOME_DIR.clone().multiplyScalar(distance).add(target), target, 1200);
+
+  selection = hit.mesh;
+  showInfo(hit.mesh);
+  outlineBox.setFromObject(hit.mesh);
+  outlineBox.visible = true;
+  outlineBox.material.color.setHex(0xffffff);
+  outlineBox.material.transparent = true;
+  outlineBox.material.opacity = 0.85;
+
+  const cat = CATEGORIES[hit.mesh.userData.item?.c];
+  showToast(cat ? `${hit.name} · ${cat.label}` : hit.name);
+  return true;
+}
+
 /* ---------------------------------------------------- keyboard navigation */
 
 const keys = new Set();
@@ -1214,4 +1298,10 @@ function onResize() {
 window.addEventListener('resize', onResize);
 
 applyLabelVisibility();
+
+// The Compass userscript opens the map as ?room=WA22, so the room that class is
+// in is already framed when the page appears.
+const deepLinkRoom = new URLSearchParams(window.location.search).get('room');
+if (deepLinkRoom) focusLocation(deepLinkRoom);
+
 tick();
