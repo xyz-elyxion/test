@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      1.2.0
+// @version      1.3.0
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22) and opens that room in the EDSC 3D campus map.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
@@ -22,7 +22,7 @@
  *
  *   <span id="topDetailsLocationName" class="topDetails__locationName">WA22</span>
  *
- * The script puts a small "Open to map" pill right after that span. Clicking it
+ * The script puts a small "Open to map" plate right after that span. Clicking it
  * opens
  *
  *   https://xyz-elyxion.github.io/test/?room=WA22
@@ -32,6 +32,8 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
+ * 1.3.0 — ink-enamel plate to match the map's wayfinding signage: squared
+ *         corners, chalk label, red pin and base rule, no backdrop filter.
  * 1.2.0 — redesigned pill button (map pin + label, hover/press states, dark and
  *         light friendly, keyboard focus ring), sturdier re-render handling and
  *         skipping placeholder text such as "TBC".
@@ -61,32 +63,32 @@
     a.${BUTTON_CLASS} {
       display: inline-flex !important;
       align-items: center !important;
-      gap: 6px !important;
+      gap: 7px !important;
       margin: 0 0 0 10px !important;
-      padding: 4px 11px 4px 8px !important;
-      border: 1px solid rgba(247, 201, 72, 0.42) !important;
-      border-radius: 999px !important;
-      background: linear-gradient(180deg, #1e4368 0%, #12293f 100%) !important;
-      color: #ffe8a6 !important;
-      font: 600 12px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+      padding: 4px 11px 4px 9px !important;
+      border: 1px solid #0c1712 !important;
+      border-radius: 3px !important;
+      background: #16261f !important;
+      color: #eef2e9 !important;
+      font: 600 11.5px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
       letter-spacing: 0.005em !important;
       text-decoration: none !important;
       text-transform: none !important;
       white-space: nowrap !important;
       vertical-align: middle !important;
       cursor: pointer !important;
-      box-shadow: 0 1px 1px rgba(9, 24, 38, 0.25), 0 6px 16px -8px rgba(9, 24, 38, 0.6),
-        inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
-      transition: transform 0.16s cubic-bezier(0.32, 0.72, 0.28, 1),
-        box-shadow 0.16s cubic-bezier(0.32, 0.72, 0.28, 1),
-        background 0.16s cubic-bezier(0.32, 0.72, 0.28, 1), color 0.16s ease !important;
+      box-shadow: inset 0 -2px 0 0 #d84a31, 0 1px 2px rgba(9, 20, 15, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+      transition: background 0.16s cubic-bezier(0.22, 0.68, 0.26, 1),
+        box-shadow 0.16s cubic-bezier(0.22, 0.68, 0.26, 1), transform 0.16s cubic-bezier(0.22, 0.68, 0.26, 1) !important;
     }
     a.${BUTTON_CLASS} .edsc-open-map__pin {
       width: 13px !important;
       height: 13px !important;
       flex: 0 0 auto !important;
       margin: 0 !important;
-      opacity: 0.85;
+      color: #f2765c !important;
+      opacity: 0.9;
       transition: opacity 0.16s ease;
     }
     a.${BUTTON_CLASS} .edsc-open-map__label {
@@ -96,22 +98,21 @@
       line-height: inherit !important;
     }
     a.${BUTTON_CLASS}:hover {
-      background: linear-gradient(180deg, #27557f 0%, #16334c 100%) !important;
-      border-color: rgba(255, 219, 128, 0.7) !important;
-      color: #fff6d2 !important;
+      background: #20352b !important;
+      box-shadow: inset 0 -2px 0 0 #f2765c, 0 3px 8px -3px rgba(9, 20, 15, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
       transform: translateY(-1px) !important;
-      box-shadow: 0 2px 3px rgba(9, 24, 38, 0.24), 0 12px 24px -10px rgba(9, 24, 38, 0.65),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
     }
     a.${BUTTON_CLASS}:hover .edsc-open-map__pin {
       opacity: 1;
     }
     a.${BUTTON_CLASS}:active {
-      transform: translateY(0) scale(0.985) !important;
-      box-shadow: 0 1px 1px rgba(9, 24, 38, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.25) !important;
+      transform: translateY(0) !important;
+      background: #0f1c16 !important;
+      box-shadow: inset 0 -2px 0 0 #d84a31, inset 0 2px 3px rgba(0, 0, 0, 0.35) !important;
     }
     a.${BUTTON_CLASS}:focus-visible {
-      outline: 2px solid rgba(247, 201, 72, 0.85) !important;
+      outline: 2px solid #e2533a !important;
       outline-offset: 2px !important;
     }
     @media (prefers-reduced-motion: reduce) {

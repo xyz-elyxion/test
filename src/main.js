@@ -947,6 +947,7 @@ function showInfo(mesh) {
   const b = item._bounds;
   const size = item.flat ? 'Open space' : `${floors} ${floors > 1 ? 'storeys' : 'storey'}`;
   const area = b ? Math.round((b.w * b.d * 0.04) / 10) * 10 : null;
+  const levels = ['G', '1F'];
   const floorList = item.rooms
     ? ['Ground floor', 'First floor']
         .map((label, lv) => {
@@ -954,7 +955,9 @@ function showInfo(mesh) {
             .filter((r) => r.lv === lv)
             .map((r) => r.n)
             .join(' · ');
-          return names ? `<div><span>${label}</span><b>${names}</b></div>` : '';
+          return names
+            ? `<div><span><i>${levels[lv]}</i>${label}</span><b>${names}</b></div>`
+            : '';
         })
         .join('')
     : '';
