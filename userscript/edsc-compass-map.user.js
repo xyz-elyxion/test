@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      2.1.0
+// @version      2.1.1
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
+// @exclude      https://edsc-vic.compass.education/login.aspx*
 // @run-at       document-start
 // @grant        none
 // @noframes
@@ -32,6 +33,8 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
+ * 2.1.1 — the sign-in page (/login.aspx) is excluded twice over: @exclude, and
+ *         a runtime path check so the loading plate never covers it.
  * 2.1.0 — runs at document-start and paints an ink loading plate over Compass
  *         until the class header renders (or 9 s pass, or you click it), so a
  *         half-built Compass page is never what you sit looking at.
@@ -240,9 +243,14 @@
     return document.getElementById(LOADER_ID);
   }
 
+  /** Compass's sign-in page: nothing to map, nothing to cover. */
+  function isAuthPage() {
+    return /\/login\.aspx$/i.test(location.pathname);
+  }
+
   function showLoader() {
     const root = document.body || document.documentElement;
-    if (loaderGone || !root || loaderElement()) return;
+    if (loaderGone || !root || loaderElement() || isAuthPage()) return;
 
     if (!document.getElementById(LOADER_STYLE_ID)) {
       const style = document.createElement('style');
