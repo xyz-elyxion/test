@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      1.3.0
-// @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22) and opens that room in the EDSC 3D campus map.
+// @version      2.1.0
+// @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
-// @run-at       document-idle
+// @run-at       document-start
 // @grant        none
 // @noframes
 // @downloadURL  https://xyz-elyxion.github.io/test/userscript/edsc-compass-map.user.js
@@ -32,6 +32,9 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
+ * 2.1.0 — runs at document-start and paints an ink loading plate over Compass
+ *         until the class header renders (or 9 s pass, or you click it), so a
+ *         half-built Compass page is never what you sit looking at.
  * 1.3.0 — ink-enamel plate to match the map's wayfinding signage: squared
  *         corners, chalk label, red pin and base rule, no backdrop filter.
  * 1.2.0 — redesigned pill button (map pin + label, hover/press states, dark and
@@ -125,6 +128,183 @@
     }
   `;
 
+  /* ------------------------------------------------------------------- *
+   * Boot screen
+   * ------------------------------------------------------------------- */
+
+  const LOADER_ID = 'edsc-compass-loader';
+  const LOADER_STYLE_ID = 'edsc-compass-loader-style';
+  const LOADER_MIN_MS = 500; // never flash in and straight out
+  const LOADER_MAX_MS = 9000; // never trap you on a page that never settles
+
+  const LOADER_PIN =
+    '<svg class="edsc-loader__pin" viewBox="0 0 24 24" width="20" height="20" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" ' +
+    'aria-hidden="true" focusable="false">' +
+    '<path d="M20 10c0 4.99-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 14.99 4 10a8 8 0 0 1 16 0Z" />' +
+    '<circle cx="12" cy="10" r="2.6" />' +
+    '</svg>';
+
+  const LOADER_STYLE = `
+    #${LOADER_ID} {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 2147483000 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #101d17 !important;
+      color: #eef2e9 !important;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+      opacity: 1;
+      transition: opacity 0.28s cubic-bezier(0.22, 0.68, 0.26, 1);
+    }
+    #${LOADER_ID}.is-done {
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+    #${LOADER_ID} .edsc-loader__plate {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 13px;
+      min-width: 214px;
+      padding: 20px 24px 18px;
+      border: 1px solid rgba(238, 242, 233, 0.18);
+      border-radius: 4px;
+      background: #16261f;
+      box-shadow: inset 0 -3px 0 0 #d84a31;
+    }
+    #${LOADER_ID} .edsc-loader__pin {
+      width: 20px;
+      height: 20px;
+      color: #f2765c;
+    }
+    #${LOADER_ID} .edsc-loader__word {
+      margin: 0;
+      font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+      color: #9fb0a4;
+    }
+    #${LOADER_ID} .edsc-loader__word b {
+      color: #eef2e9;
+      font-weight: 600;
+    }
+    #${LOADER_ID} .edsc-loader__bar {
+      width: 100%;
+      height: 3px;
+      border-radius: 2px;
+      background: rgba(238, 242, 233, 0.16);
+      overflow: hidden;
+    }
+    #${LOADER_ID} .edsc-loader__bar i {
+      display: block;
+      width: 38%;
+      height: 100%;
+      background: #e2533a;
+      animation: edsc-compass-load 1.15s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+    }
+    @keyframes edsc-compass-load {
+      0% { transform: translateX(-110%); }
+      100% { transform: translateX(275%); }
+    }
+    #${LOADER_ID} .edsc-loader__hint {
+      margin: 0;
+      font-size: 11.5px;
+      line-height: 1.3;
+      letter-spacing: 0.01em;
+      color: #8fa295;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #${LOADER_ID} { transition: none; }
+      #${LOADER_ID} .edsc-loader__bar i { animation: none; width: 100%; opacity: 0.5; }
+    }
+  `;
+
+  const LOADER_HTML =
+    '<div class="edsc-loader__plate">' +
+    LOADER_PIN +
+    '<p class="edsc-loader__word">EDSC <b>Compass</b></p>' +
+    '<div class="edsc-loader__bar"><i></i></div>' +
+    '<p class="edsc-loader__hint">Loading your classes…</p>' +
+    '</div>';
+
+  let loaderShownAt = 0;
+  let loaderGone = false;
+  let readyPoll = 0;
+
+  function loaderElement() {
+    return document.getElementById(LOADER_ID);
+  }
+
+  function showLoader() {
+    const root = document.body || document.documentElement;
+    if (loaderGone || !root || loaderElement()) return;
+
+    if (!document.getElementById(LOADER_STYLE_ID)) {
+      const style = document.createElement('style');
+      style.id = LOADER_STYLE_ID;
+      style.textContent = LOADER_STYLE;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    const el = document.createElement('div');
+    el.id = LOADER_ID;
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.setAttribute('aria-label', 'Loading Compass');
+    el.title = 'Click to dismiss';
+    el.innerHTML = LOADER_HTML;
+    root.appendChild(el);
+
+    loaderShownAt = performance.now();
+    el.addEventListener('click', hideLoader);
+    document.addEventListener('keydown', onLoaderKey);
+    setTimeout(hideLoader, LOADER_MAX_MS);
+    readyPoll = setTimeout(watchReady, 120);
+  }
+
+  function onLoaderKey(event) {
+    if (event.key === 'Escape') hideLoader();
+  }
+
+  /** Has Compass painted enough that covering it is no longer helpful? */
+  function compassReady() {
+    const body = document.body;
+    if (!body) return false;
+    if (document.querySelector('#topDetailsLocationName')) return true;
+    if (document.querySelector('.topDetails, [class*="topDetails__"]')) return true;
+    // Anything else with real content on it (login page, dashboard, notices).
+    // innerText, not textContent: script and style bodies are not content.
+    return (body.innerText || '').trim().length > 150;
+  }
+
+  function watchReady() {
+    if (loaderGone) return;
+    if (compassReady()) {
+      const waited = performance.now() - loaderShownAt;
+      setTimeout(hideLoader, Math.max(0, LOADER_MIN_MS - waited));
+      return;
+    }
+    readyPoll = setTimeout(watchReady, 120);
+  }
+
+  function hideLoader() {
+    if (loaderGone) return;
+    loaderGone = true;
+    clearTimeout(readyPoll);
+    document.removeEventListener('keydown', onLoaderKey);
+
+    const el = loaderElement();
+    if (!el) return;
+    el.classList.add('is-done');
+    el.removeAttribute('role');
+    setTimeout(() => el.remove(), 340);
+  }
+
   let queued = false;
 
   function schedule() {
@@ -206,6 +386,12 @@
   function start() {
     injectStyle();
 
+    // The boot screen can be built before <body> exists; move it in once it does.
+    const loader = loaderElement();
+    if (loader && document.body && loader.parentNode !== document.body) {
+      document.body.appendChild(loader);
+    }
+
     // Compass is a single-page app: it swaps this header in place as you move
     // between classes, so watch the DOM instead of loading once.
     new MutationObserver(schedule).observe(document.body || document.documentElement, {
@@ -220,6 +406,10 @@
 
     sync();
   }
+
+  // Paint the boot screen before Compass paints its own shell.
+  if (document.documentElement) showLoader();
+  else document.addEventListener('readystatechange', showLoader, { once: true });
 
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start, { once: true });
