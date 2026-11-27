@@ -25,6 +25,9 @@ const palette = Object.fromEntries(
 
 const toHex = (c) => `#${c.getHexString()}`;
 
+// The clock button holds an icon plus its time, so only the time is rewritten.
+const clockLabel = document.getElementById('clock-time');
+
 /** Crisp, screen-space label that always faces the camera. */
 function makeLabel(text, cls = '', priority = 2) {
   const el = document.createElement('div');
@@ -318,7 +321,7 @@ function updateSky(dt) {
   const label = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   if (label !== clockText) {
     clockText = label;
-    btnTime.textContent = label;
+    if (clockLabel) clockLabel.textContent = label;
   }
 }
 
@@ -878,16 +881,29 @@ Object.entries(CATEGORIES).forEach(([key, cat]) => {
   const count = categoryCounts[key] || 0;
   li.innerHTML = `<span class="swatch" style="background:${toHex(palette[key])}"></span>
     <span class="name">${cat.label}</span><span class="count">${count}</span>`;
-  li.addEventListener('click', () => {
+  li.tabIndex = 0;
+  li.setAttribute('role', 'button');
+  li.setAttribute('aria-pressed', 'false');
+  li.title = count ? `${count} ${cat.label.toLowerCase()} on the plan` : cat.label;
+
+  const toggle = () => {
     if (hidden.has(key)) hidden.delete(key);
     else hidden.add(key);
     li.classList.toggle('off', hidden.has(key));
+    li.setAttribute('aria-pressed', String(hidden.has(key)));
     pickables.forEach((m) => {
       if (m.userData.item && m.userData.item.c === key) m.visible = !hidden.has(key);
     });
     applyLabelVisibility();
     selection = null;
     info.classList.remove('show');
+  };
+
+  li.addEventListener('click', toggle);
+  li.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggle();
   });
   legendList.appendChild(li);
 });
@@ -1303,5 +1319,14 @@ applyLabelVisibility();
 // in is already framed when the page appears.
 const deepLinkRoom = new URLSearchParams(window.location.search).get('room');
 if (deepLinkRoom) focusLocation(deepLinkRoom);
+
+// The splash goes away as soon as the first frame of the campus is ready.
+const loading = document.getElementById('loading');
+if (loading) {
+  requestAnimationFrame(() => {
+    loading.classList.add('hide');
+    setTimeout(() => loading.remove(), 600);
+  });
+}
 
 tick();

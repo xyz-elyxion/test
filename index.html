@@ -6,7 +6,7 @@
     <title>East Doncaster Secondary College — 3D Campus</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231c3f6e'/%3E%3Ctext x='16' y='22' font-family='sans-serif' font-size='12' font-weight='bold' fill='%23f7c948' text-anchor='middle'%3EE%3C/text%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f2740'/%3E%3Ctext x='16' y='22' font-family='sans-serif' font-size='12' font-weight='bold' fill='%23f0a92a' text-anchor='middle'%3EE%3C/text%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="./src/style.css" />
   </head>
@@ -23,27 +23,58 @@
             <p>3D Campus Map</p>
           </div>
         </div>
+
         <div class="tools">
-          <button id="btn-labels" class="tool active" type="button">Labels</button>
-          <button id="btn-top" class="tool" type="button">Plan view</button>
-          <button id="btn-reset" class="tool" type="button">Reset</button>
+          <button id="btn-labels" class="tool active" type="button" title="Show or hide building labels">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4Z" />
+              <circle cx="7.6" cy="7.6" r="1.1" fill="currentColor" stroke="none" />
+            </svg>
+            <span class="tool-label">Labels</span>
+          </button>
+
+          <button id="btn-top" class="tool" type="button" title="Look straight down on the campus">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2 2.6 6.8 12 11.6l9.4-4.8Z" />
+              <path d="m2.6 12.2 9.4 4.8 9.4-4.8" />
+              <path d="m2.6 17.2 9.4 4.8 9.4-4.8" />
+            </svg>
+            <span class="tool-label">Plan view</span>
+          </button>
+
+          <button id="btn-reset" class="tool" type="button" title="Fly back to the starting view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 9-9 9.8 9.8 0 0 0-6.7 2.7L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
+            <span class="tool-label">Reset</span>
+          </button>
+
           <button
             id="btn-time"
             class="tool clock"
             type="button"
             title="Click to pause the day/night cycle"
           >
-            09:36
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7.2v5.1l3.2 2" />
+            </svg>
+            <span class="clock-time" id="clock-time">09:36</span>
           </button>
         </div>
       </header>
 
       <aside class="legend" id="legend">
-        <h2>Buildings</h2>
+        <div class="legend-head">
+          <h2>Buildings</h2>
+          <span class="legend-tip">click to toggle</span>
+        </div>
         <ul id="legend-list"></ul>
-        <p class="legend-hint">Click a swatch to hide that group.</p>
-        <p class="legend-hint">G marks the ground floor of a two-storey block; the rooms paired with it sit directly above.</p>
-        <p class="legend-hint">The campus runs a real-time day/night cycle — click the clock to pause it.</p>
+        <div class="legend-notes">
+          <p class="legend-hint"><b>G</b> marks the ground floor of a two-storey block — the rooms paired with it sit directly above.</p>
+          <p class="legend-hint">The campus runs a live day/night cycle. Click the clock to pause it.</p>
+        </div>
       </aside>
 
       <div class="info-card" id="info" aria-live="polite"></div>
@@ -52,13 +83,29 @@
 
       <div class="tooltip" id="tooltip"></div>
 
-      <div class="hint">WASD or arrows to travel · Q / E to turn · Shift to sprint · Double-click a building to fly to it · Scroll to zoom</div>
+      <div class="hint">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> travel</span>
+        <span><kbd>Q</kbd><kbd>E</kbd> turn</span>
+        <span><kbd>Shift</kbd> sprint</span>
+        <span><kbd>Scroll</kbd> zoom</span>
+        <span><kbd>Double-click</kbd> fly to</span>
+      </div>
 
-      <div class="compass">
+      <div class="compass" aria-hidden="true">
         <span>N</span>
         <div class="arrow"></div>
       </div>
     </div>
+
+    <div class="loading" id="loading">
+      <div class="loading-inner">
+        <div class="loading-mark">EDSC</div>
+        <p class="loading-title">East Doncaster Secondary College</p>
+        <p class="loading-sub">Building the 3D campus…</p>
+        <div class="loading-bar"><i></i></div>
+      </div>
+    </div>
+
     <!-- GitHub Pages serves these files straight from the repo, so three.js is vendored
          and resolved with an import map instead of the bare package name. -->
     <script type="importmap">
