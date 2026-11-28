@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      2.4.0
+// @version      2.5.0
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
@@ -34,6 +34,8 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
+ * 2.5.0 — Microsoft's SAML endpoint uses the same ink plate as Compass, not a
+ *         separate Microsoft-styled screen.
  * 2.4.0 — arriving at Microsoft's SAML endpoint from Compass gets a quieter,
  *         Microsoft-styled "Signing you in…" screen instead of the ink plate.
  * 2.3.0 — the SSO steps say "Logging you in…": Compass's own handoff
@@ -60,10 +62,6 @@
   const AUTH_HOST = 'auth.compass.education';
   const MS_HOST = 'login.microsoftonline.com';
   const MS_TENANT = 'd96cb337-1a87-44cf-b69b-3cec334a4c1f';
-  const MS_LOADER_ID = 'edsc-ms-signin';
-  const MS_STYLE_ID = 'edsc-ms-signin-style';
-  const MS_MIN_MS = 400; // never flash in and straight out
-  const MS_MAX_MS = 6000; // Microsoft's own form must never stay covered
   const NAME_SELECTOR = '#topDetailsLocationName';
   const BUTTON_CLASS = 'edsc-open-map';
   const BUTTON_TEXT = 'Open to map';
@@ -296,7 +294,9 @@
 
   function showLoader() {
     const root = document.body || document.documentElement;
-    if (loaderGone || !root || loaderElement() || !isCompassOrigin() || isAuthPage()) return;
+    const microsoft = isMicrosoftSignin();
+    if (loaderGone || !root || loaderElement()) return;
+    if (!microsoft && (!isCompassOrigin() || isAuthPage())) return;
 
     if (!document.getElementById(LOADER_STYLE_ID)) {
       const style = document.createElement('style');
@@ -305,7 +305,7 @@
       (document.head || document.documentElement).appendChild(style);
     }
 
-    const signingIn = isSigningIn();
+    const signingIn = microsoft || isSigningIn();
 
     const el = document.createElement('div');
     el.id = LOADER_ID;
@@ -320,9 +320,9 @@
     el.addEventListener('click', hideLoader);
     document.addEventListener('keydown', onLoaderKey);
     setTimeout(hideLoader, signingIn ? LOADER_LOGIN_MAX_MS : LOADER_MAX_MS);
-    // On the handoff page Compass's own "signing in" text would retire this
-    // plate at once, so only the app shell counts as ready there.
-    readyPoll = setTimeout(signingIn ? watchAppShell : watchReady, 120);
+    // On the handoff pages the site's own "signing in" text would retire this
+    // plate at once, so only the app shell (or Microsoft's real form) counts.
+    readyPoll = setTimeout(microsoft ? watchMicrosoftForm : signingIn ? watchAppShell : watchReady, 120);
   }
 
   function onLoaderKey(event) {
@@ -385,73 +385,6 @@
    * Microsoft sign-in (the SAML identity provider Compass sends you to)
    * ------------------------------------------------------------------- */
 
-  const MS_STYLE = `
-    #${MS_LOADER_ID} {
-      position: fixed !important;
-      inset: 0 !important;
-      z-index: 2147483000 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      margin: 0 !important;
-      background: #f3f2f1 !important;
-      color: #242424 !important;
-      font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif !important;
-      opacity: 1;
-      transition: opacity 0.25s ease;
-    }
-    #${MS_LOADER_ID}.is-done {
-      opacity: 0 !important;
-      pointer-events: none !important;
-    }
-    #${MS_LOADER_ID} .edsc-ms__card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-      padding: 28px 32px;
-      border-radius: 8px;
-      background: #fff;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 0 1px rgba(0, 0, 0, 0.14);
-    }
-    #${MS_LOADER_ID} .edsc-ms__spin {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      border: 3px solid #d9d9d9;
-      border-top-color: #0f6cbd;
-      animation: edsc-ms-spin 0.9s linear infinite;
-    }
-    @keyframes edsc-ms-spin {
-      to { transform: rotate(360deg); }
-    }
-    #${MS_LOADER_ID} .edsc-ms__word {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-    }
-    #${MS_LOADER_ID} .edsc-ms__hint {
-      margin: 0;
-      font-size: 12.5px;
-      color: #616161;
-    }
-    @media (prefers-reduced-motion: reduce) {
-      #${MS_LOADER_ID} { transition: none; }
-      #${MS_LOADER_ID} .edsc-ms__spin { animation-duration: 2.4s; }
-    }
-  `;
-
-  const MS_HTML =
-    '<div class="edsc-ms__card">' +
-    '<div class="edsc-ms__spin" aria-hidden="true"></div>' +
-    '<p class="edsc-ms__word">Signing you in…</p>' +
-    '<p class="edsc-ms__hint">Taking you back to Compass</p>' +
-    '</div>';
-
-  let msGone = false;
-  let msShownAt = 0;
-  let msPoll = 0;
-
   /** Did this sign-in start at Compass, rather than at Microsoft by itself? */
   function cameFromCompass() {
     try {
@@ -471,10 +404,6 @@
     return tenant.test(location.pathname) && cameFromCompass();
   }
 
-  function msElement() {
-    return document.getElementById(MS_LOADER_ID);
-  }
-
   /** Microsoft has painted its own form: stop covering it, it needs typing in. */
   function microsoftReady() {
     const body = document.body;
@@ -489,55 +418,15 @@
     return (body.innerText || '').trim().length > 90;
   }
 
-  function hideMsSignin() {
-    if (msGone) return;
-    msGone = true;
-    clearTimeout(msPoll);
-    const el = msElement();
-    if (!el) return;
-    el.classList.add('is-done');
-    el.removeAttribute('role');
-    setTimeout(() => el.remove(), 300);
-  }
-
-  function watchMicrosoft() {
-    if (msGone) return;
+  /** Microsoft's form is ready to be typed in: get the plate off it. */
+  function watchMicrosoftForm() {
+    if (loaderGone) return;
     if (microsoftReady()) {
-      setTimeout(hideMsSignin, Math.max(0, MS_MIN_MS - (performance.now() - msShownAt)));
+      const waited = performance.now() - loaderShownAt;
+      setTimeout(hideLoader, Math.max(0, LOADER_MIN_MS - waited));
       return;
     }
-    msPoll = setTimeout(watchMicrosoft, 100);
-  }
-
-  function showMsSignin() {
-    const root = document.body || document.documentElement;
-    if (msGone || !root || msElement() || !isMicrosoftSignin()) return;
-
-    if (!document.getElementById(MS_STYLE_ID)) {
-      const style = document.createElement('style');
-      style.id = MS_STYLE_ID;
-      style.textContent = MS_STYLE;
-      (document.head || document.documentElement).appendChild(style);
-    }
-
-    const el = document.createElement('div');
-    el.id = MS_LOADER_ID;
-    el.setAttribute('role', 'status');
-    el.setAttribute('aria-live', 'polite');
-    el.setAttribute('aria-label', 'Signing in to Compass');
-    el.title = 'Click to dismiss';
-    el.innerHTML = MS_HTML;
-    root.appendChild(el);
-
-    msShownAt = performance.now();
-    el.addEventListener('click', hideMsSignin);
-    document.addEventListener('keydown', onMsKey);
-    setTimeout(hideMsSignin, MS_MAX_MS);
-    msPoll = setTimeout(watchMicrosoft, 100);
-  }
-
-  function onMsKey(event) {
-    if (event.key === 'Escape') hideMsSignin();
+    readyPoll = setTimeout(watchMicrosoftForm, 100);
   }
 
   let queued = false;
@@ -645,14 +534,9 @@
     sync();
   }
 
-  // Paint the boot screens before Compass (or Microsoft) paints its own shell.
-  function paintBootScreens() {
-    showLoader();
-    showMsSignin();
-  }
-
-  if (document.documentElement) paintBootScreens();
-  else document.addEventListener('readystatechange', paintBootScreens, { once: true });
+  // Paint the boot screen before Compass (or Microsoft) paints its own shell.
+  if (document.documentElement) showLoader();
+  else document.addEventListener('readystatechange', showLoader, { once: true });
 
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start, { once: true });
