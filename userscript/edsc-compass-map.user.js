@@ -1,11 +1,10 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      2.1.1
+// @version      2.2.0
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
-// @exclude      https://edsc-vic.compass.education/login.aspx*
 // @run-at       document-start
 // @grant        none
 // @noframes
@@ -33,8 +32,10 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
- * 2.1.1 — the sign-in page (/login.aspx) is excluded twice over: @exclude, and
- *         a runtime path check so the loading plate never covers it.
+ * 2.2.0 — the SAML handoff (/login?handler=SamlSignin) gets its own plate that
+ *         says "Logging you in…" and waits for the page to move on.
+ * 2.1.1 — the sign-in form (/login.aspx) is left alone: a runtime path check
+ *         keeps the loading plate off it.
  * 2.1.0 — runs at document-start and paints an ink loading plate over Compass
  *         until the class header renders (or 9 s pass, or you click it), so a
  *         half-built Compass page is never what you sit looking at.
@@ -139,6 +140,7 @@
   const LOADER_STYLE_ID = 'edsc-compass-loader-style';
   const LOADER_MIN_MS = 500; // never flash in and straight out
   const LOADER_MAX_MS = 9000; // never trap you on a page that never settles
+  const LOADER_LOGIN_MAX_MS = 20000; // the SAML handoff can be slow
 
   const LOADER_PIN =
     '<svg class="edsc-loader__pin" viewBox="0 0 24 24" width="20" height="20" fill="none" ' +
@@ -227,13 +229,18 @@
     }
   `;
 
-  const LOADER_HTML =
-    '<div class="edsc-loader__plate">' +
-    LOADER_PIN +
-    '<p class="edsc-loader__word">EDSC <b>Compass</b></p>' +
-    '<div class="edsc-loader__bar"><i></i></div>' +
-    '<p class="edsc-loader__hint">Loading your classes…</p>' +
-    '</div>';
+  function loaderHtml(hint) {
+    return (
+      '<div class="edsc-loader__plate">' +
+      LOADER_PIN +
+      '<p class="edsc-loader__word">EDSC <b>Compass</b></p>' +
+      '<div class="edsc-loader__bar"><i></i></div>' +
+      '<p class="edsc-loader__hint">' +
+      hint +
+      '</p>' +
+      '</div>'
+    );
+  }
 
   let loaderShownAt = 0;
   let loaderGone = false;
@@ -243,9 +250,18 @@
     return document.getElementById(LOADER_ID);
   }
 
-  /** Compass's sign-in page: nothing to map, nothing to cover. */
+  /** The single sign-on handoff: Compass is verifying you, not loading a page. */
+  function isSamlSignin() {
+    return (
+      /^\/login(\.aspx)?$/i.test(location.pathname) &&
+      /[?&]handler=SamlSignin(&|$)/i.test(location.search)
+    );
+  }
+
+  /** Compass's sign-in form: nothing to map, nothing to cover. */
   function isAuthPage() {
-    return /\/login\.aspx$/i.test(location.pathname);
+    if (isSamlSignin()) return false;
+    return /^\/login(\.aspx)?$/i.test(location.pathname);
   }
 
   function showLoader() {
@@ -259,32 +275,43 @@
       (document.head || document.documentElement).appendChild(style);
     }
 
+    const signingIn = isSamlSignin();
+
     const el = document.createElement('div');
     el.id = LOADER_ID;
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
-    el.setAttribute('aria-label', 'Loading Compass');
+    el.setAttribute('aria-label', signingIn ? 'Logging in to Compass' : 'Loading Compass');
     el.title = 'Click to dismiss';
-    el.innerHTML = LOADER_HTML;
+    el.innerHTML = loaderHtml(signingIn ? 'Logging you in…' : 'Loading your classes…');
     root.appendChild(el);
 
     loaderShownAt = performance.now();
     el.addEventListener('click', hideLoader);
     document.addEventListener('keydown', onLoaderKey);
-    setTimeout(hideLoader, LOADER_MAX_MS);
-    readyPoll = setTimeout(watchReady, 120);
+    setTimeout(hideLoader, signingIn ? LOADER_LOGIN_MAX_MS : LOADER_MAX_MS);
+    // On the handoff page Compass's own "signing in" text would retire this
+    // plate at once, so only the app shell counts as ready there.
+    readyPoll = setTimeout(signingIn ? watchAppShell : watchReady, 120);
   }
 
   function onLoaderKey(event) {
     if (event.key === 'Escape') hideLoader();
   }
 
+  /** The signed-in app shell: room name in the header, or its container. */
+  function compassHeader() {
+    return !!(
+      document.querySelector('#topDetailsLocationName') ||
+      document.querySelector('.topDetails, [class*="topDetails__"]')
+    );
+  }
+
   /** Has Compass painted enough that covering it is no longer helpful? */
   function compassReady() {
     const body = document.body;
     if (!body) return false;
-    if (document.querySelector('#topDetailsLocationName')) return true;
-    if (document.querySelector('.topDetails, [class*="topDetails__"]')) return true;
+    if (compassHeader()) return true;
     // Anything else with real content on it (login page, dashboard, notices).
     // innerText, not textContent: script and style bodies are not content.
     return (body.innerText || '').trim().length > 150;
@@ -298,6 +325,17 @@
       return;
     }
     readyPoll = setTimeout(watchReady, 120);
+  }
+
+  /** Handoff pages: leave as soon as the app shell shows up, nothing else counts. */
+  function watchAppShell() {
+    if (loaderGone) return;
+    if (compassHeader()) {
+      const waited = performance.now() - loaderShownAt;
+      setTimeout(hideLoader, Math.max(0, LOADER_MIN_MS - waited));
+      return;
+    }
+    readyPoll = setTimeout(watchAppShell, 120);
   }
 
   function hideLoader() {
