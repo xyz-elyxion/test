@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      2.6.1
+// @version      2.7.0
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
@@ -34,6 +34,9 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
+ * 2.7.0 — the Compass sign-in page gets the boot plate too (it retires as soon
+ *         as the form paints), and the alternate-sign-in removal now lands as
+ *         CSS at document-start, not only once the DOM is synced.
  * 2.6.1 — the loading field drifts: a slow surveyor grid and a breathing red
  *         glow behind the plate (both still when reduced motion is on).
  * 2.6.0 — the login page keeps only "Sign in with SSO": the "Sign in another
@@ -331,11 +334,15 @@
   }
 
   /** Compass's sign-in form: nothing to map, nothing to cover. */
+  /** Compass's own sign-in form (it lives at /login and the legacy /login.aspx). */
+  function isSigninForm() {
+    return location.hostname === APP_HOST && /^\/login(\.aspx)?$/i.test(location.pathname);
+  }
+
   function isAuthPage() {
     if (isSigningIn()) return false;
     // The auth origin holds only sign-in pages of its own.
-    if (location.hostname === AUTH_HOST) return true;
-    return /^\/login(\.aspx)?$/i.test(location.pathname);
+    return location.hostname === AUTH_HOST;
   }
 
   function showLoader() {
@@ -351,6 +358,7 @@
       (document.head || document.documentElement).appendChild(style);
     }
 
+    const signinForm = isSigninForm();
     const signingIn = microsoft || isSigningIn();
 
     const el = document.createElement('div');
@@ -359,7 +367,9 @@
     el.setAttribute('aria-live', 'polite');
     el.setAttribute('aria-label', signingIn ? 'Logging in to Compass' : 'Loading Compass');
     el.title = 'Click to dismiss';
-    el.innerHTML = loaderHtml(signingIn ? 'Logging you in…' : 'Loading your classes…');
+    el.innerHTML = loaderHtml(
+      signingIn ? 'Logging you in…' : signinForm ? 'Loading Compass…' : 'Loading your classes…'
+    );
     root.appendChild(el);
 
     loaderShownAt = performance.now();
@@ -368,7 +378,14 @@
     setTimeout(hideLoader, signingIn ? LOADER_LOGIN_MAX_MS : LOADER_MAX_MS);
     // On the handoff pages the site's own "signing in" text would retire this
     // plate at once, so only the app shell (or Microsoft's real form) counts.
-    readyPoll = setTimeout(microsoft ? watchMicrosoftForm : signingIn ? watchAppShell : watchReady, 120);
+    const watcher = microsoft
+      ? watchMicrosoftForm
+      : signingIn
+        ? watchAppShell
+        : signinForm
+          ? watchSigninForm
+          : watchReady;
+    readyPoll = setTimeout(watcher, 120);
   }
 
   function onLoaderKey(event) {
@@ -401,6 +418,23 @@
       return;
     }
     readyPoll = setTimeout(watchReady, 120);
+  }
+
+  /** The sign-in form has painted: the plate has done its job. */
+  function signinFormReady() {
+    return !!document.querySelector(
+      '#SamlSignInButtonText, .samlSignInContainer, .loginForm form, input[type="password"]'
+    );
+  }
+
+  function watchSigninForm() {
+    if (loaderGone) return;
+    if (signinFormReady()) {
+      const waited = performance.now() - loaderShownAt;
+      setTimeout(hideLoader, Math.max(0, LOADER_MIN_MS - waited));
+      return;
+    }
+    readyPoll = setTimeout(watchSigninForm, 100);
   }
 
   /** Handoff pages: leave as soon as the app shell shows up, nothing else counts. */
@@ -513,6 +547,23 @@
     return link;
   }
 
+  const LOGIN_FIX_STYLE_ID = 'edsc-login-fix';
+  const LOGIN_FIX_STYLE = `
+    .samlSignInAnotherWayButton { display: none !important; }
+    .divider:has(+ .samlSignInAnotherWayButton) { display: none !important; }
+  `;
+
+  /** Hide the alternate route from the first paint, before any DOM sync. */
+  function injectLoginFix() {
+    if (!isSigninForm() || document.getElementById(LOGIN_FIX_STYLE_ID)) return;
+    const host = document.head || document.documentElement;
+    if (!host) return;
+    const style = document.createElement('style');
+    style.id = LOGIN_FIX_STYLE_ID;
+    style.textContent = LOGIN_FIX_STYLE;
+    host.appendChild(style);
+  }
+
   /** Everyone signs in with SSO here, so the alternate route is just a second
    *  way to fail; take it out with the "or" that only introduced it. */
   function removeAlternateSignIn() {
@@ -566,6 +617,8 @@
   }
 
   function start() {
+    injectLoginFix();
+
     // Only Compass itself has a room header to put a map button beside.
     if (location.hostname !== APP_HOST) return;
 
@@ -593,8 +646,13 @@
   }
 
   // Paint the boot screen before Compass (or Microsoft) paints its own shell.
-  if (document.documentElement) showLoader();
-  else document.addEventListener('readystatechange', showLoader, { once: true });
+  function boot() {
+    injectLoginFix();
+    showLoader();
+  }
+
+  if (document.documentElement) boot();
+  else document.addEventListener('readystatechange', boot, { once: true });
 
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start, { once: true });
