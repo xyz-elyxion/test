@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      2.7.0
+// @version      2.8.0
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
@@ -34,6 +34,8 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
+ * 2.8.0 — the Compass sign-in page is not covered at all: the animated ink
+ *         field becomes its page background, behind the sign-in card.
  * 2.7.0 — the Compass sign-in page gets the boot plate too (it retires as soon
  *         as the form paints), and the alternate-sign-in removal now lands as
  *         CSS at document-start, not only once the DOM is synced.
@@ -342,7 +344,8 @@
   function isAuthPage() {
     if (isSigningIn()) return false;
     // The auth origin holds only sign-in pages of its own.
-    return location.hostname === AUTH_HOST;
+    if (location.hostname === AUTH_HOST) return true;
+    return /^\/login(\.aspx)?$/i.test(location.pathname);
   }
 
   function showLoader() {
@@ -358,7 +361,6 @@
       (document.head || document.documentElement).appendChild(style);
     }
 
-    const signinForm = isSigninForm();
     const signingIn = microsoft || isSigningIn();
 
     const el = document.createElement('div');
@@ -367,9 +369,7 @@
     el.setAttribute('aria-live', 'polite');
     el.setAttribute('aria-label', signingIn ? 'Logging in to Compass' : 'Loading Compass');
     el.title = 'Click to dismiss';
-    el.innerHTML = loaderHtml(
-      signingIn ? 'Logging you in…' : signinForm ? 'Loading Compass…' : 'Loading your classes…'
-    );
+    el.innerHTML = loaderHtml(signingIn ? 'Logging you in…' : 'Loading your classes…');
     root.appendChild(el);
 
     loaderShownAt = performance.now();
@@ -378,14 +378,7 @@
     setTimeout(hideLoader, signingIn ? LOADER_LOGIN_MAX_MS : LOADER_MAX_MS);
     // On the handoff pages the site's own "signing in" text would retire this
     // plate at once, so only the app shell (or Microsoft's real form) counts.
-    const watcher = microsoft
-      ? watchMicrosoftForm
-      : signingIn
-        ? watchAppShell
-        : signinForm
-          ? watchSigninForm
-          : watchReady;
-    readyPoll = setTimeout(watcher, 120);
+    readyPoll = setTimeout(microsoft ? watchMicrosoftForm : signingIn ? watchAppShell : watchReady, 120);
   }
 
   function onLoaderKey(event) {
@@ -418,23 +411,6 @@
       return;
     }
     readyPoll = setTimeout(watchReady, 120);
-  }
-
-  /** The sign-in form has painted: the plate has done its job. */
-  function signinFormReady() {
-    return !!document.querySelector(
-      '#SamlSignInButtonText, .samlSignInContainer, .loginForm form, input[type="password"]'
-    );
-  }
-
-  function watchSigninForm() {
-    if (loaderGone) return;
-    if (signinFormReady()) {
-      const waited = performance.now() - loaderShownAt;
-      setTimeout(hideLoader, Math.max(0, LOADER_MIN_MS - waited));
-      return;
-    }
-    readyPoll = setTimeout(watchSigninForm, 100);
   }
 
   /** Handoff pages: leave as soon as the app shell shows up, nothing else counts. */
@@ -548,20 +524,78 @@
   }
 
   const LOGIN_FIX_STYLE_ID = 'edsc-login-fix';
+  const LOGIN_BG_ID = 'edsc-login-bg';
+
+  // The sign-in page gets the same moving field as the boot plate, but as its
+  // page background, with the sign-in card sitting on top of it.
   const LOGIN_FIX_STYLE = `
+    html body,
+    html body[class],
+    html body .centerWrapper { background: transparent !important; }
+    #${LOGIN_BG_ID} {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: -1 !important;
+      overflow: hidden !important;
+      pointer-events: none !important;
+      background: #101d17 !important;
+    }
+    #${LOGIN_BG_ID}::before {
+      content: "";
+      position: absolute;
+      inset: -20%;
+      background-image:
+        linear-gradient(to right, rgba(238, 242, 233, 0.055) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(238, 242, 233, 0.055) 1px, transparent 1px);
+      background-size: 56px 56px, 56px 56px;
+      animation: edsc-login-grid-drift 24s linear infinite;
+    }
+    #${LOGIN_BG_ID}::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        58% 52% at 50% 46%,
+        rgba(226, 83, 58, 0.22),
+        rgba(226, 83, 58, 0.07) 45%,
+        transparent 72%
+      );
+      animation: edsc-login-glow-breathe 7s ease-in-out infinite alternate;
+    }
+    @keyframes edsc-login-grid-drift {
+      from { transform: translate3d(0, 0, 0); }
+      to { transform: translate3d(56px, 56px, 0); }
+    }
+    @keyframes edsc-login-glow-breathe {
+      from { opacity: 0.35; transform: scale(0.92); }
+      to { opacity: 1; transform: scale(1.08); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #${LOGIN_BG_ID}::before,
+      #${LOGIN_BG_ID}::after { animation: none; }
+    }
     .samlSignInAnotherWayButton { display: none !important; }
     .divider:has(+ .samlSignInAnotherWayButton) { display: none !important; }
   `;
 
-  /** Hide the alternate route from the first paint, before any DOM sync. */
+  /** Sign-in page: animated field behind the card, alternate route gone. */
   function injectLoginFix() {
-    if (!isSigninForm() || document.getElementById(LOGIN_FIX_STYLE_ID)) return;
+    if (!isSigninForm()) return;
+
     const host = document.head || document.documentElement;
-    if (!host) return;
-    const style = document.createElement('style');
-    style.id = LOGIN_FIX_STYLE_ID;
-    style.textContent = LOGIN_FIX_STYLE;
-    host.appendChild(style);
+    if (host && !document.getElementById(LOGIN_FIX_STYLE_ID)) {
+      const style = document.createElement('style');
+      style.id = LOGIN_FIX_STYLE_ID;
+      style.textContent = LOGIN_FIX_STYLE;
+      host.appendChild(style);
+    }
+
+    if (document.body && !document.getElementById(LOGIN_BG_ID)) {
+      const field = document.createElement('div');
+      field.id = LOGIN_BG_ID;
+      field.setAttribute('aria-hidden', 'true');
+      document.body.insertBefore(field, document.body.firstChild);
+    }
   }
 
   /** Everyone signs in with SSO here, so the alternate route is just a second
