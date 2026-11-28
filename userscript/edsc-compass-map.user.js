@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      2.2.0
+// @version      2.3.0
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
+// @match        https://auth.compass.education/*
 // @run-at       document-start
 // @grant        none
 // @noframes
@@ -32,6 +33,8 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
+ * 2.3.0 — the SSO steps say "Logging you in…": Compass's own handoff
+ *         (/login?handler=SamlSignin) and auth.compass.education/auth/sso/assert.
  * 2.2.0 — the SAML handoff (/login?handler=SamlSignin) gets its own plate that
  *         says "Logging you in…" and waits for the page to move on.
  * 2.1.1 — the sign-in form (/login.aspx) is left alone: a runtime path check
@@ -50,6 +53,7 @@
   'use strict';
 
   const MAP_URL = 'https://xyz-elyxion.github.io/test/';
+  const AUTH_HOST = 'auth.compass.education';
   const NAME_SELECTOR = '#topDetailsLocationName';
   const BUTTON_CLASS = 'edsc-open-map';
   const BUTTON_TEXT = 'Open to map';
@@ -258,9 +262,21 @@
     );
   }
 
+  /** The SSO assertion on Compass's auth origin: the last step before the app. */
+  function isSsoAssert() {
+    return location.hostname === AUTH_HOST && /^\/auth\/sso\//i.test(location.pathname);
+  }
+
+  /** Any page that is in the middle of signing you in. */
+  function isSigningIn() {
+    return isSamlSignin() || isSsoAssert();
+  }
+
   /** Compass's sign-in form: nothing to map, nothing to cover. */
   function isAuthPage() {
-    if (isSamlSignin()) return false;
+    if (isSigningIn()) return false;
+    // The auth origin holds only sign-in pages of its own.
+    if (location.hostname === AUTH_HOST) return true;
     return /^\/login(\.aspx)?$/i.test(location.pathname);
   }
 
@@ -275,7 +291,7 @@
       (document.head || document.documentElement).appendChild(style);
     }
 
-    const signingIn = isSamlSignin();
+    const signingIn = isSigningIn();
 
     const el = document.createElement('div');
     el.id = LOADER_ID;
@@ -430,6 +446,9 @@
   }
 
   function start() {
+    // The auth origin has no room header to put a map button beside.
+    if (location.hostname === AUTH_HOST) return;
+
     injectStyle();
 
     // The boot screen can be built before <body> exists; move it in once it does.
