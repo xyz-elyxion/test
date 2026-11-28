@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      2.9.0
+// @version      2.9.1
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
@@ -34,8 +34,8 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
- * 2.9.0 — the Compass sign-in page is rebranded: the card becomes an ink plate
- *         with chalk type and a signal-red SSO button.
+ * 2.9.1 — the sign-in rebrand is undone: Compass's own card sits on the moving
+ *         field again, untouched by the script.
  * 2.8.0 — the Compass sign-in page is not covered at all: the animated ink
  *         field becomes its page background, behind the sign-in card.
  * 2.7.0 — the Compass sign-in page gets the boot plate too (it retires as soon
@@ -576,80 +576,6 @@
       #${LOGIN_BG_ID}::before,
       #${LOGIN_BG_ID}::after { animation: none; }
     }
-    /* --- the card carries the school's signage, not Compass's chrome --- */
-    .loginFormContainer,
-    .loginFormContainer-customBackground {
-      background: #16261f !important;
-      border: 1px solid rgba(238, 242, 233, 0.18) !important;
-      border-radius: 4px !important;
-      box-shadow: inset 0 -3px 0 0 #d84a31, 0 24px 60px -28px rgba(0, 0, 0, 0.85) !important;
-      color: #eef2e9 !important;
-      padding: 26px 26px 22px !important;
-    }
-    .loginFormContainer .schoolName,
-    .loginForm .schoolName {
-      margin: 0 0 18px !important;
-      padding: 0 0 13px !important;
-      border-bottom: 1px solid rgba(238, 242, 233, 0.14) !important;
-      color: #9fb0a4 !important;
-      font: 600 10.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
-      letter-spacing: 0.16em !important;
-      text-transform: uppercase !important;
-    }
-    .samlSignInButtonContainer {
-      border: 0 !important;
-      border-radius: 3px !important;
-      background: #e2533a !important;
-      overflow: hidden !important;
-      transition: background 0.15s ease !important;
-    }
-    .samlSignInButtonContainer:hover,
-    .samlSignInButtonContainer:focus-within {
-      background: #d84a31 !important;
-    }
-    #samlSignInButtonKeyImage {
-      margin-left: 14px !important;
-      filter: brightness(0) invert(1) !important;
-      opacity: 0.85 !important;
-    }
-    .samlSignInButtonText,
-    #SamlSignInButtonText {
-      width: 100% !important;
-      padding: 15px 16px !important;
-      border: 0 !important;
-      border-radius: 0 !important;
-      background: transparent !important;
-      color: #ffffff !important;
-      font: 600 11.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
-      letter-spacing: 0.16em !important;
-      text-transform: uppercase !important;
-      text-align: left !important;
-      cursor: pointer !important;
-    }
-    .loginForm input[type="text"],
-    .loginForm input[type="password"],
-    .loginForm input[type="email"],
-    .loginForm input[type="tel"] {
-      background: #101d17 !important;
-      border: 1px solid rgba(238, 242, 233, 0.22) !important;
-      border-radius: 3px !important;
-      color: #eef2e9 !important;
-      padding: 11px 12px !important;
-      font: 400 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif !important;
-    }
-    .loginForm input[type="text"]:focus,
-    .loginForm input[type="password"]:focus {
-      border-color: #e2533a !important;
-      outline: none !important;
-    }
-    .loginForm label,
-    .loginForm .checkbox label {
-      color: #b9c6bc !important;
-      font-size: 12px !important;
-    }
-    .loginForm a { color: #f2765c !important; }
-    .compassLogo-color img { filter: brightness(0) invert(1) !important; opacity: 0.7 !important; }
-
     .samlSignInAnotherWayButton { display: none !important; }
     .divider:has(+ .samlSignInAnotherWayButton) { display: none !important; }
   `;
