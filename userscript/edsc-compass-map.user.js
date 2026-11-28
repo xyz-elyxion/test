@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      2.3.0
+// @version      2.4.0
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
 // @match        https://auth.compass.education/*
+// @match        https://login.microsoftonline.com/*
 // @run-at       document-start
 // @grant        none
 // @noframes
@@ -33,6 +34,8 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
+ * 2.4.0 — arriving at Microsoft's SAML endpoint from Compass gets a quieter,
+ *         Microsoft-styled "Signing you in…" screen instead of the ink plate.
  * 2.3.0 — the SSO steps say "Logging you in…": Compass's own handoff
  *         (/login?handler=SamlSignin) and auth.compass.education/auth/sso/assert.
  * 2.2.0 — the SAML handoff (/login?handler=SamlSignin) gets its own plate that
@@ -53,7 +56,14 @@
   'use strict';
 
   const MAP_URL = 'https://xyz-elyxion.github.io/test/';
+  const APP_HOST = 'edsc-vic.compass.education';
   const AUTH_HOST = 'auth.compass.education';
+  const MS_HOST = 'login.microsoftonline.com';
+  const MS_TENANT = 'd96cb337-1a87-44cf-b69b-3cec334a4c1f';
+  const MS_LOADER_ID = 'edsc-ms-signin';
+  const MS_STYLE_ID = 'edsc-ms-signin-style';
+  const MS_MIN_MS = 400; // never flash in and straight out
+  const MS_MAX_MS = 6000; // Microsoft's own form must never stay covered
   const NAME_SELECTOR = '#topDetailsLocationName';
   const BUTTON_CLASS = 'edsc-open-map';
   const BUTTON_TEXT = 'Open to map';
@@ -272,6 +282,10 @@
     return isSamlSignin() || isSsoAssert();
   }
 
+  function isCompassOrigin() {
+    return location.hostname === APP_HOST || location.hostname === AUTH_HOST;
+  }
+
   /** Compass's sign-in form: nothing to map, nothing to cover. */
   function isAuthPage() {
     if (isSigningIn()) return false;
@@ -282,7 +296,7 @@
 
   function showLoader() {
     const root = document.body || document.documentElement;
-    if (loaderGone || !root || loaderElement() || isAuthPage()) return;
+    if (loaderGone || !root || loaderElement() || !isCompassOrigin() || isAuthPage()) return;
 
     if (!document.getElementById(LOADER_STYLE_ID)) {
       const style = document.createElement('style');
@@ -367,6 +381,165 @@
     setTimeout(() => el.remove(), 340);
   }
 
+  /* ------------------------------------------------------------------- *
+   * Microsoft sign-in (the SAML identity provider Compass sends you to)
+   * ------------------------------------------------------------------- */
+
+  const MS_STYLE = `
+    #${MS_LOADER_ID} {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 2147483000 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      margin: 0 !important;
+      background: #f3f2f1 !important;
+      color: #242424 !important;
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif !important;
+      opacity: 1;
+      transition: opacity 0.25s ease;
+    }
+    #${MS_LOADER_ID}.is-done {
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+    #${MS_LOADER_ID} .edsc-ms__card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 28px 32px;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 0 1px rgba(0, 0, 0, 0.14);
+    }
+    #${MS_LOADER_ID} .edsc-ms__spin {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 3px solid #d9d9d9;
+      border-top-color: #0f6cbd;
+      animation: edsc-ms-spin 0.9s linear infinite;
+    }
+    @keyframes edsc-ms-spin {
+      to { transform: rotate(360deg); }
+    }
+    #${MS_LOADER_ID} .edsc-ms__word {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    #${MS_LOADER_ID} .edsc-ms__hint {
+      margin: 0;
+      font-size: 12.5px;
+      color: #616161;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #${MS_LOADER_ID} { transition: none; }
+      #${MS_LOADER_ID} .edsc-ms__spin { animation-duration: 2.4s; }
+    }
+  `;
+
+  const MS_HTML =
+    '<div class="edsc-ms__card">' +
+    '<div class="edsc-ms__spin" aria-hidden="true"></div>' +
+    '<p class="edsc-ms__word">Signing you in…</p>' +
+    '<p class="edsc-ms__hint">Taking you back to Compass</p>' +
+    '</div>';
+
+  let msGone = false;
+  let msShownAt = 0;
+  let msPoll = 0;
+
+  /** Did this sign-in start at Compass, rather than at Microsoft by itself? */
+  function cameFromCompass() {
+    try {
+      const from = new URL(document.referrer);
+      if (from.hostname === APP_HOST || from.hostname === AUTH_HOST) return true;
+    } catch (error) {
+      /* no referrer at all, or not a URL: fall through to the SAML request */
+    }
+    // A referrer policy can blank the referrer; Microsoft's plain sign-in page
+    // never carries a SAML request, so this still only matches the SSO hop.
+    return /[?&]SAMLRequest=/i.test(location.search);
+  }
+
+  function isMicrosoftSignin() {
+    if (location.hostname !== MS_HOST) return false;
+    const tenant = new RegExp('^/' + MS_TENANT + '/saml2(/|$)', 'i');
+    return tenant.test(location.pathname) && cameFromCompass();
+  }
+
+  function msElement() {
+    return document.getElementById(MS_LOADER_ID);
+  }
+
+  /** Microsoft has painted its own form: stop covering it, it needs typing in. */
+  function microsoftReady() {
+    const body = document.body;
+    if (!body) return false;
+    if (
+      document.querySelector(
+        'input[type="password"], input[type="email"], input[name="loginfmt"], #i0116, #i0118'
+      )
+    ) {
+      return true;
+    }
+    return (body.innerText || '').trim().length > 90;
+  }
+
+  function hideMsSignin() {
+    if (msGone) return;
+    msGone = true;
+    clearTimeout(msPoll);
+    const el = msElement();
+    if (!el) return;
+    el.classList.add('is-done');
+    el.removeAttribute('role');
+    setTimeout(() => el.remove(), 300);
+  }
+
+  function watchMicrosoft() {
+    if (msGone) return;
+    if (microsoftReady()) {
+      setTimeout(hideMsSignin, Math.max(0, MS_MIN_MS - (performance.now() - msShownAt)));
+      return;
+    }
+    msPoll = setTimeout(watchMicrosoft, 100);
+  }
+
+  function showMsSignin() {
+    const root = document.body || document.documentElement;
+    if (msGone || !root || msElement() || !isMicrosoftSignin()) return;
+
+    if (!document.getElementById(MS_STYLE_ID)) {
+      const style = document.createElement('style');
+      style.id = MS_STYLE_ID;
+      style.textContent = MS_STYLE;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    const el = document.createElement('div');
+    el.id = MS_LOADER_ID;
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.setAttribute('aria-label', 'Signing in to Compass');
+    el.title = 'Click to dismiss';
+    el.innerHTML = MS_HTML;
+    root.appendChild(el);
+
+    msShownAt = performance.now();
+    el.addEventListener('click', hideMsSignin);
+    document.addEventListener('keydown', onMsKey);
+    setTimeout(hideMsSignin, MS_MAX_MS);
+    msPoll = setTimeout(watchMicrosoft, 100);
+  }
+
+  function onMsKey(event) {
+    if (event.key === 'Escape') hideMsSignin();
+  }
+
   let queued = false;
 
   function schedule() {
@@ -446,8 +619,8 @@
   }
 
   function start() {
-    // The auth origin has no room header to put a map button beside.
-    if (location.hostname === AUTH_HOST) return;
+    // Only Compass itself has a room header to put a map button beside.
+    if (location.hostname !== APP_HOST) return;
 
     injectStyle();
 
@@ -472,9 +645,14 @@
     sync();
   }
 
-  // Paint the boot screen before Compass paints its own shell.
-  if (document.documentElement) showLoader();
-  else document.addEventListener('readystatechange', showLoader, { once: true });
+  // Paint the boot screens before Compass (or Microsoft) paints its own shell.
+  function paintBootScreens() {
+    showLoader();
+    showMsSignin();
+  }
+
+  if (document.documentElement) paintBootScreens();
+  else document.addEventListener('readystatechange', paintBootScreens, { once: true });
 
   if (document.body) start();
   else document.addEventListener('DOMContentLoaded', start, { once: true });
