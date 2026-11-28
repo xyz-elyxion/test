@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      2.6.0
+// @version      2.6.1
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
@@ -34,6 +34,8 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
+ * 2.6.1 — the loading field drifts: a slow surveyor grid and a breathing red
+ *         glow behind the plate (both still when reduced motion is on).
  * 2.6.0 — the login page keeps only "Sign in with SSO": the "Sign in another
  *         way" button and the "or" above it are removed.
  * 2.5.0 — Microsoft's SAML endpoint uses the same ink plate as Compass, not a
@@ -176,6 +178,8 @@
       padding: 0 !important;
       background: #101d17 !important;
       color: #eef2e9 !important;
+      overflow: hidden !important;
+      isolation: isolate;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
       opacity: 1;
       transition: opacity 0.28s cubic-bezier(0.22, 0.68, 0.26, 1);
@@ -184,7 +188,45 @@
       opacity: 0 !important;
       pointer-events: none !important;
     }
+    /* Drifting surveyor grid: the field never sits still. */
+    #${LOADER_ID}::before {
+      content: "";
+      position: absolute;
+      inset: -20%;
+      background-image:
+        linear-gradient(to right, rgba(238, 242, 233, 0.055) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(238, 242, 233, 0.055) 1px, transparent 1px);
+      background-size: 56px 56px, 56px 56px;
+      animation: edsc-grid-drift 24s linear infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+    /* Slow signal-red glow swelling behind the plate. */
+    #${LOADER_ID}::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        58% 52% at 50% 46%,
+        rgba(226, 83, 58, 0.22),
+        rgba(226, 83, 58, 0.07) 45%,
+        transparent 72%
+      );
+      animation: edsc-glow-breathe 7s ease-in-out infinite alternate;
+      pointer-events: none;
+      z-index: 0;
+    }
+    @keyframes edsc-grid-drift {
+      from { transform: translate3d(0, 0, 0); }
+      to { transform: translate3d(56px, 56px, 0); }
+    }
+    @keyframes edsc-glow-breathe {
+      from { opacity: 0.35; transform: scale(0.92); }
+      to { opacity: 1; transform: scale(1.08); }
+    }
     #${LOADER_ID} .edsc-loader__plate {
+      position: relative;
+      z-index: 1;
       display: flex;
       flex-direction: column;
       align-items: flex-start;
@@ -194,7 +236,7 @@
       border: 1px solid rgba(238, 242, 233, 0.18);
       border-radius: 4px;
       background: #16261f;
-      box-shadow: inset 0 -3px 0 0 #d84a31;
+      box-shadow: inset 0 -3px 0 0 #d84a31, 0 18px 40px -18px rgba(0, 0, 0, 0.75);
     }
     #${LOADER_ID} .edsc-loader__pin {
       width: 20px;
@@ -240,6 +282,8 @@
     @media (prefers-reduced-motion: reduce) {
       #${LOADER_ID} { transition: none; }
       #${LOADER_ID} .edsc-loader__bar i { animation: none; width: 100%; opacity: 0.5; }
+      #${LOADER_ID}::before,
+      #${LOADER_ID}::after { animation: none; }
     }
   `;
 
