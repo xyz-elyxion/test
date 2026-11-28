@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EDSC Compass → 3D Campus Map
 // @namespace    https://github.com/xyz-elyxion/test
-// @version      2.5.0
+// @version      2.6.0
 // @description  Adds an "Open to map" button beside the room name in Compass (e.g. WA22), opens that room in the EDSC 3D campus map, and paints a loading screen while Compass boots.
 // @author       xyz-elyxion
 // @match        https://edsc-vic.compass.education/*
@@ -34,6 +34,8 @@
  * the location in place as you move between classes, so the button follows the
  * live text and cleans itself up when there is no room on screen.
  *
+ * 2.6.0 — the login page keeps only "Sign in with SSO": the "Sign in another
+ *         way" button and the "or" above it are removed.
  * 2.5.0 — Microsoft's SAML endpoint uses the same ink plate as Compass, not a
  *         separate Microsoft-styled screen.
  * 2.4.0 — arriving at Microsoft's SAML endpoint from Compass gets a quieter,
@@ -467,7 +469,19 @@
     return link;
   }
 
+  /** Everyone signs in with SSO here, so the alternate route is just a second
+   *  way to fail; take it out with the "or" that only introduced it. */
+  function removeAlternateSignIn() {
+    document.querySelectorAll('.samlSignInAnotherWayButton').forEach((button) => {
+      const divider = button.previousElementSibling;
+      button.remove();
+      if (divider && divider.classList.contains('divider')) divider.remove();
+    });
+  }
+
   function sync() {
+    removeAlternateSignIn();
+
     const live = [];
     document.querySelectorAll(NAME_SELECTOR).forEach((el) => {
       const name = cleanName(el.textContent);
